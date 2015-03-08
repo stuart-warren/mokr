@@ -1,61 +1,51 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"strings"
+
+	"github.com/mitchellh/multistep"
 )
 
-func pipeCommands(commands ...*exec.Cmd) ([]byte, error) {
-	for i, command := range commands[:len(commands)-1] {
-		out, err := command.StdoutPipe()
-		if err != nil {
-			return nil, err
-		}
-		command.Start()
-		commands[i+1].Stdin = out
+type stepConfig struct{}
+
+func (s *stepConfig) Run(state multistep.StateBag) multistep.StepAction {
+	image := "test"
+	if len(os.Args) > 1 {
+		image = os.Args[1]
 	}
-	final, err := commands[len(commands)-1].Output()
-	if err != nil {
-		return nil, err
+	state.Put("imagename", image)
+	state.Put("dockerfile", "Dockerfile.mokr")
+	state.Put("runner", "deis/slugrunner")
+	state.Put("builder", "deis/slugbuilder")
+	return multistep.ActionContinue
+}
+
+func (s *stepConfig) Cleanup(state multistep.StateBag) {}
+
+func buildSlugRunner() *multistep.BasicStateBag {
+	state := new(multistep.BasicStateBag)
+	steps := []multistep.Step{
+		&stepConfig{},
+		&stepSha1{},
+		&stepAuthor{},
+		&stepBranch{},
+		&stepArchive{},
+		&stepSlugbuilder{},
+		&stepSlugExtract{},
+		&stepCreateDockerfile{},
+		&stepBuildImage{},
 	}
-	return final, nil
+	runner := &multistep.BasicRunner{Steps: steps}
+	runner.Run(state)
+	return state
 }
 
 func main() {
-	output, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
-	sha := strings.TrimSpace(string(output))
-	if err != nil {
-		log.Fatal("Ensure git is installed and you are in a git repo.", err)
+	state := buildSlugRunner()
+	_, ok := state.GetOk("imagebuilt")
+	if !ok {
+		log.Fatal("Something went wrong :(")
 	}
-	output, _ = exec.Command("git", "--no-pager", "show", "-s", "--format='%an <%ae>'", sha).Output()
-	committer := strings.TrimSpace(string(output))
-	fmt.Println(committer)
-	gcmd3 := exec.Command("git", "archive", "HEAD")
-	dcmd := exec.Command("docker", "run", "-i", "-a", "stdin", "deis/slugbuilder")
-	output, err = pipeCommands(gcmd3, dcmd)
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	cont := strings.TrimSpace(string(output))
-	dcmd2 := exec.Command("docker", "logs", "-f", cont)
-	dcmd2.Stdout = os.Stdout
-	dcmd2.Run()
-	fmt.Println("Extracting slug...")
-	slugfile := fmt.Sprintf("./slug-%s.tgz", sha)
-	dcmd3 := exec.Command("docker", "cp", cont+":/tmp/slug.tgz", slugfile)
-	dcmd3.Run()
-	// TODO:
-	// create Dockerfile
-	// - FROM deis/slugrunner
-	// - MAINTAINER committer
-	// - ADD slug.tgz /app
-	// - Dockerfile.include
-	// - ENTRYPOINT ["/runner/init"]
-	// docker build
-	// rm slug if not debug
-	// push
-	// update marathon
+	log.Println("Great success!")
 }
