@@ -1,7 +1,7 @@
 mokr
 ====
 
-Basic tool to compile a git repo using buildpacks into a docker container.
+Basic tool to compile a [12factor](http://12factor.net/)/[heroku](https://devcenter.heroku.com/categories/language-support) app git repo using [buildpacks](https://devcenter.heroku.com/articles/buildpacks) into a docker container.
 
 Will interact with mesos/marathon eventually.
 
@@ -21,3 +21,5 @@ Requires:
 * Docker >= 1.5 to be installed on the users path
 * Git >= 1.8.3 to be installed on the users path
 * User able to run docker without sudo/admin rights
+
+For other language example repos, see: https://github.com/deis?query=example
